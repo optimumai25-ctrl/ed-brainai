@@ -258,10 +258,11 @@ elif mode == "✏️ Edit Conversation":
     if not history:
         st.info("No chat history found.")
     else:
-        options = [
-            f"{i}: {turn.get('role','?')} | [{turn.get('timestamp','N/A')}] | {turn.get('content','')[:80].replace('\n',' ')}"
-            for i, turn in enumerate(history)
-        ]
+        options = []
+        for i, turn in enumerate(history):
+            preview = (turn.get('content','')[:80]).replace(chr(10), ' ').replace(chr(13), ' ')
+            options.append(f"{i}: {turn.get('role','?')} | [{turn.get('timestamp','N/A')}] | {preview}")
+
         sel = st.selectbox("Select a turn to edit", options, index=0)
         idx = int(sel.split(":", 1)[0])
         turn = history[idx]
