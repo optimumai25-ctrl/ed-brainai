@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 import os, pickle, numpy as np
 
-# Cloud Run has a read-only filesystem except /tmp, so we default there
+# Use Cloud Run–safe base dir
 BASE_DIR = Path(os.getenv("DATA_DIR", "/tmp/edbrainai"))
 EMBED_DIR = BASE_DIR / "embeddings"
 INDEX_PATH = EMBED_DIR / "faiss.index"
@@ -12,22 +12,25 @@ META_PATH = EMBED_DIR / "metadata.pkl"
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 
-# Prefer the modern OpenAI SDK, fall back to legacy if not available
+# Prefer modern OpenAI SDK, fall back to legacy
 try:
     from openai import OpenAI
     _client = OpenAI()
     _use_client = True
 except Exception:
-    import openai  # type: ignore
-    openai.api_key = os.getenv("OPENAI_API_KEY")
     _client = None
-    _use_client = False
+    try:
+        import openai  # type: ignore
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        _use_client = False
+    except Exception:
+        openai = None
+        _use_client = False
 
 _index = None
 _metadata: Dict[int, Dict] = {}
 
 def _load_index():
-    """Lazy-load FAISS index + metadata."""
     global _index, _metadata
     if _index is not None:
         return
@@ -44,6 +47,7 @@ def _embed(text: str) -> Optional[np.ndarray]:
         if _use_client:
             vec = _client.embeddings.create(model=EMBED_MODEL, input=text).data[0].embedding
         else:
+            assert openai is not None, "OpenAI SDK not available"
             vec = openai.Embedding.create(model=EMBED_MODEL, input=text)["data"][0]["embedding"]  # type: ignore
         return np.asarray(vec, dtype=np.float32)
     except Exception:
@@ -61,7 +65,7 @@ def _search_vec(vec: np.ndarray, k: int) -> List[Tuple[int, float, Dict]]:
         if idx == -1:
             continue
         meta = _metadata.get(int(idx), {})
-        score = float(1.0 / (1.0 + dist))  # convert L2 distance → similarity-ish score
+        score = float(1.0 / (1.0 + dist))  # convert L2 distance to a similarity-ish score
         out.append((int(idx), score, meta))
     return out
 
@@ -75,33 +79,31 @@ def search_meetings(query: str, k: int = 5) -> List[Tuple[int, float, Dict]]:
     mtg = [h for h in hits if str(h[2].get("folder", "")).lower() == "meetings"]
     return mtg[:k] if mtg else hits[:k]
 
-# Optional helper used by your code; keeps same signature
 def search_in_date_window(query: str, start, end, k: int = 5) -> List[Tuple[int, float, Dict]]:
     from datetime import datetime
-    def _parse_date(s: Optional[str]) -> Optional[datetime]:
+    def _parse(s: Optional[str]) -> Optional[datetime]:
         if not s: return None
         for fmt in ("%Y-%m-%d","%Y/%m/%d","%d-%m-%Y","%d/%m/%Y","%b %d %Y","%B %d %Y"):
-            try:
-                return datetime.strptime(s, fmt)
-            except Exception:
-                pass
+            try: return datetime.strptime(s.strip(), fmt)
+            except Exception: pass
         return None
 
     _load_index()
     qv = _embed(query)
     hits = _search_vec(qv, 50)
-    filtered: List[Tuple[int, float, Dict]] = []
+
+    keep: List[Tuple[int, float, Dict]] = []
     for idx, score, meta in hits:
-        md = _parse_date(meta.get("meeting_date"))
-        vf = _parse_date(meta.get("valid_from"))
-        vt = _parse_date(meta.get("valid_to"))
-        keep = False
+        md = _parse(meta.get("meeting_date"))
+        vf = _parse(meta.get("valid_from"))
+        vt = _parse(meta.get("valid_to"))
+        ok = False
         if md:
-            keep = (start <= md <= end)
+            ok = (start <= md <= end)
         elif vf and vt:
-            keep = not (vt < start or vf > end)
+            ok = not (vt < start or vf > end)
         elif vf and not vt:
-            keep = (vf <= end)
-        if keep:
-            filtered.append((idx, score, meta))
-    return filtered[:k]
+            ok = (vf <= end)
+        if ok:
+            keep.append((idx, score, meta))
+    return keep[:k]
