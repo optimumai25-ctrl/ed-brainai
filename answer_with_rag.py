@@ -21,7 +21,9 @@ except Exception:
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Use GPT-5 for chat/answers
-COMPLETIONS_MODEL = "gpt-5"
+# Use an env var if set; default to a widely-available model
+COMPLETIONS_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+
 MAX_CONTEXT_CHARS = 8000
 
 # ─────────────────────────────────────────────────────────────
