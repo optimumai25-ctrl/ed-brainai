@@ -28,11 +28,12 @@ except Exception:
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
 PARSED_DIR = Path("parsed_data")
-EMBED_DIR = Path("embeddings")
+BASE_DIR = Path(os.getenv("DATA_DIR", "/tmp/edbrainai"))
+
+EMBED_DIR = BASE_DIR / "embeddings"
 EMBED_DIR.mkdir(parents=True, exist_ok=True)
 
 EMBED_MODEL = "text-embedding-3-small"
-EMBED_DIM = 1536
 INDEX_PATH = EMBED_DIR / "faiss.index"
 META_PATH = EMBED_DIR / "metadata.pkl"
 REPORT_CSV = EMBED_DIR / "embedding_report.csv"
