@@ -258,10 +258,13 @@ elif mode == "✏️ Edit Conversation":
     if not history:
         st.info("No chat history found.")
     else:
+        # Build options without backslashes inside f-string expressions
         options = []
         for i, turn in enumerate(history):
-            preview = (turn.get('content','')[:80]).replace(chr(10), ' ').replace(chr(13), ' ')
-            options.append(f"{i}: {turn.get('role','?')} | [{turn.get('timestamp','N/A')}] | {preview}")
+            role = turn.get('role', '?')
+            ts = turn.get('timestamp', 'N/A')
+            preview = (turn.get('content', '')[:80]).replace('\n', ' ').replace('\r', ' ')
+            options.append(f"{i}: {role} | [{ts}] | {preview}")
 
         sel = st.selectbox("Select a turn to edit", options, index=0)
         idx = int(sel.split(":", 1)[0])
